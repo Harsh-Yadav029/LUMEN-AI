@@ -1,21 +1,22 @@
-import fs from 'fs';
 import admin from 'firebase-admin';
 
 export function initFirebase() {
   try {
-    const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-
-    if (!serviceAccountPath) {
-      throw new Error('FIREBASE_SERVICE_ACCOUNT_PATH is not set in .env');
+    if (!process.env.FIREBASE_PROJECT_ID) {
+      throw new Error('Firebase ENV variables not set');
     }
 
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      }),
+    });
+
     console.log('✅ Firebase Admin initialised');
   } catch (err) {
     console.error('❌ Firebase Admin failed to initialise:', err.message);
-    console.error('   Make sure FIREBASE_SERVICE_ACCOUNT_PATH points to your serviceAccount.json');
-    console.error('   That file must NOT be committed to git — keep it in .gitignore');
     process.exit(1);
   }
 }
