@@ -8,7 +8,6 @@ dotenv.config();
 import fs       from 'fs';
 import path     from 'path';
 import express  from 'express';
-import cors     from 'cors';
 
 import { connectDB }   from './config/db.js';
 import { initFirebase } from './config/firebase.js';
@@ -27,26 +26,28 @@ if (!fs.existsSync(UPLOADS)) fs.mkdirSync(UPLOADS, { recursive: true });
 
 // ── App ──
 const app = express();
-
+// 🔥 HARD FIX FOR CORS (works 100%)
 const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  process.env.CLIENT_URL // from Render env
+  "http://localhost:5173",
+  "https://lumen-ai-one.vercel.app"
 ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('CORS not allowed'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  credentials: true
-}));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
 
-app.options('*', cors());
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
