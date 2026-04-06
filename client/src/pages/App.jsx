@@ -18,17 +18,20 @@ export default function App() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [sidebarOpen, setSidebarOpen]   = useState(true);
 
+  const BASE_URL = import.meta.env.VITE_API_URL;
+
   const addMsg = (role, text, extra = {}) =>
     setMessages(prev => [...prev, { id: Date.now() + Math.random(), role, text, ...extra }]);
 
   // Authenticated fetch — auto-attaches Bearer token
   const authFetch = useCallback(async (url, options = {}) => {
     const token = await getToken();
-    return fetch(url, {
+    return fetch(`${BASE_URL}${url}`, {
       ...options,
       headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` },
     });
   }, [getToken]);
+
 
   // Load sidebar chat list
   const loadChatList = useCallback(async () => {
@@ -111,7 +114,7 @@ export default function App() {
 
     try {
       const token = await getToken();
-      const response = await fetch('/ask', {
+      const response = await fetch(`${BASE_URL}/ask`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ question, namespace: doc.namespace, fileName: doc.fileName, chatId }),
