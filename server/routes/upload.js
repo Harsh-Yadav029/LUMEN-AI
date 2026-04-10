@@ -1,6 +1,5 @@
 import express  from 'express';
 import fs       from 'fs';
-import pdfParse from 'pdf-parse';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 
 import { requireAuth } from '../middleware/auth.js';
@@ -21,7 +20,9 @@ router.post('/', requireAuth, upload.single('pdf'), async (req, res) => {
     const fileName  = req.file.originalname;
     const namespace = `${req.uid}_${Date.now()}`;
 
-    // Read buffer directly — no PDFLoader, no LangChain fs dependency
+    // Import pdf-parse lazily — avoids the startup test-file crash on Render
+    const { default: pdfParse } = await import('pdf-parse/lib/pdf-parse.js');
+
     const buffer  = fs.readFileSync(filePath);
     const pdfData = await pdfParse(buffer);
     const rawText = pdfData.text;
