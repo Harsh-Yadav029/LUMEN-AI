@@ -1,8 +1,6 @@
-// server/routes/upload.js
 import express  from 'express';
 import fs       from 'fs';
-import path     from 'path';
-import pdfParse from 'pdf-parse'; 
+import pdfParse from 'pdf-parse';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 
 import { requireAuth } from '../middleware/auth.js';
@@ -12,13 +10,9 @@ import { pinecone, BATCH_SIZE, UPLOADS } from '../config/index.js';
 
 const router = express.Router();
 
-// Ensure uploads dir exists at request time (safe for ephemeral filesystems)
-function ensureUploadsDir() {
-  if (!fs.existsSync(UPLOADS)) fs.mkdirSync(UPLOADS, { recursive: true });
-}
-
 router.post('/', requireAuth, upload.single('pdf'), async (req, res) => {
-  ensureUploadsDir();
+  if (!fs.existsSync(UPLOADS)) fs.mkdirSync(UPLOADS, { recursive: true });
+
   const filePath = req.file?.path;
 
   try {
@@ -27,12 +21,15 @@ router.post('/', requireAuth, upload.single('pdf'), async (req, res) => {
     const fileName  = req.file.originalname;
     const namespace = `${req.uid}_${Date.now()}`;
 
-    // Parse PDF directly — bypasses the broken LangChain PDFLoader path on Render
-    const dataBuffer = fs.readFileSync(filePath);
-    const pdfData    = await pdfParse(dataBuffer);
-    const rawText    = pdfData.text;
+    // Read buffer directly — no PDFLoader, no LangChain fs dependency
+    const buffer  = fs.readFileSync(filePath);
+    const pdfData = await pdfParse(buffer);
+    const rawText = pdfData.text;
 
-    // Split into chunks
+    if (!rawText || rawText.trim().length === 0) {
+      return res.status(400).json({ error: 'Could not extract text from this PDF.' });
+    }
+
     const splitter = new RecursiveCharacterTextSplitter({
       chunkSize:    800,
       chunkOverlap: 200,
@@ -40,11 +37,6 @@ router.post('/', requireAuth, upload.single('pdf'), async (req, res) => {
     });
     const texts = await splitter.splitText(rawText);
 
-    if (texts.length === 0) {
-      return res.status(400).json({ error: 'Could not extract text from this PDF.' });
-    }
-
-    // Embed and upsert to Pinecone
     const vectors = await embedTexts(texts);
     const index   = pinecone.Index(process.env.PINECONE_INDEX_NAME).namespace(namespace);
 
@@ -60,10 +52,9 @@ router.post('/', requireAuth, upload.single('pdf'), async (req, res) => {
     res.json({ status: 'ok', namespace, fileName, chunks: texts.length });
 
   } catch (err) {
-    console.error('Upload error:', err);
+    console.error('Upload error:', err.message);
     res.status(500).json({ error: err.message });
   } finally {
-    // Always clean up the temp file
     if (filePath && fs.existsSync(filePath)) {
       try { fs.unlinkSync(filePath); } catch {}
     }
