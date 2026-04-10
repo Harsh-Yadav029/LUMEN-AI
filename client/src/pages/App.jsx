@@ -18,22 +18,21 @@ export default function App() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [sidebarOpen, setSidebarOpen]   = useState(true);
 
-  const BASE_URL = import.meta.env.VITE_API_URL;
+  // Dev: VITE_API_URL is not set → empty string → Vite proxy handles /upload /ask /chats
+  // Prod: VITE_API_URL = https://lumen-ai-etdj.onrender.com → direct to Render
+  const BASE_URL = import.meta.env.VITE_API_URL || '';
 
   const addMsg = (role, text, extra = {}) =>
     setMessages(prev => [...prev, { id: Date.now() + Math.random(), role, text, ...extra }]);
 
-  // Authenticated fetch — auto-attaches Bearer token
   const authFetch = useCallback(async (url, options = {}) => {
     const token = await getToken();
     return fetch(`${BASE_URL}${url}`, {
       ...options,
       headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` },
     });
-  }, [getToken]);
+  }, [getToken, BASE_URL]);
 
-
-  // Load sidebar chat list
   const loadChatList = useCallback(async () => {
     setLoadingChats(true);
     try {
@@ -50,7 +49,6 @@ export default function App() {
 
   useEffect(() => { if (user) loadChatList(); }, [user, loadChatList]);
 
-  // Resume a past chat
   const handleSelectChat = useCallback(async (id) => {
     if (busy) return;
     try {
@@ -70,7 +68,6 @@ export default function App() {
     }
   }, [busy, authFetch]);
 
-  // Delete a chat
   const handleDeleteChat = useCallback(async (id, e) => {
     e.stopPropagation();
     try {
@@ -82,7 +79,6 @@ export default function App() {
     }
   }, [chatId, authFetch]);
 
-  // Upload PDF
   const handleUpload = useCallback(async (file) => {
     if (file.type !== 'application/pdf') { setUploadError('Please upload a PDF file.'); return; }
     setUploadError('');
@@ -104,7 +100,6 @@ export default function App() {
     }
   }, [authFetch]);
 
-  // Send message — SSE streaming
   const handleSend = useCallback(async (question) => {
     if (!question.trim() || busy || !doc) return;
     setBusy(true);
@@ -165,14 +160,12 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [busy, doc, chatId, getToken, loadChatList]);
+  }, [busy, doc, chatId, getToken, loadChatList, BASE_URL]);
 
   const handleClear = () => { setMessages([]); setChatId(null); };
 
   return (
     <div className="flex h-screen bg-bg-primary overflow-hidden">
-
-      {/* Sidebar */}
       <Sidebar
         open={sidebarOpen}
         doc={doc}
@@ -188,8 +181,6 @@ export default function App() {
         user={user}
         onLogOut={logOut}
       />
-
-      {/* Main chat area */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <ChatHeader
           doc={doc}
