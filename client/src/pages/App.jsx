@@ -8,7 +8,8 @@ import { useAuth } from '../AuthContext.jsx';
 export default function App() {
   const { user, logOut, getToken } = useAuth();
 
-  const [doc, setDoc]                   = useState(null);
+  // Multi-PDF: docs is an array of { namespace, fileName }
+  const [docs, setDocs]                 = useState([]);
   const [messages, setMessages]         = useState([]);
   const [busy, setBusy]                 = useState(false);
   const [uploading, setUploading]       = useState(false);
@@ -18,8 +19,6 @@ export default function App() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [sidebarOpen, setSidebarOpen]   = useState(true);
 
-  // Dev: VITE_API_URL is not set → empty string → Vite proxy handles /upload /ask /chats
-  // Prod: VITE_API_URL = https://lumen-ai-etdj.onrender.com → direct to Render
   const BASE_URL = import.meta.env.VITE_API_URL || '';
 
   const addMsg = (role, text, extra = {}) =>
@@ -49,6 +48,7 @@ export default function App() {
 
   useEffect(() => { if (user) loadChatList(); }, [user, loadChatList]);
 
+  // Resume a past chat — restore all PDFs from it
   const handleSelectChat = useCallback(async (id) => {
     if (busy) return;
     try {
@@ -56,7 +56,12 @@ export default function App() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
       setChatId(d.id);
-      setDoc({ namespace: d.namespace, fileName: d.fileName });
+      // Restore pdfs array — fall back to single namespace for old chats
+      setDocs(
+        d.pdfs && d.pdfs.length > 0
+          ? d.pdfs
+          : [{ namespace: d.namespace, fileName: d.fileName }]
+      );
       setMessages(d.messages.map((m, i) => ({
         id: i,
         role: m.role === 'assistant' ? 'ai' : 'user',
@@ -73,14 +78,18 @@ export default function App() {
     try {
       await authFetch(`/chats/${id}`, { method: 'DELETE' });
       setChatList(prev => prev.filter(c => c.id !== id));
-      if (chatId === id) { setChatId(null); setDoc(null); setMessages([]); }
+      if (chatId === id) { setChatId(null); setDocs([]); setMessages([]); }
     } catch (err) {
       console.error('Failed to delete chat:', err.message);
     }
   }, [chatId, authFetch]);
 
+  // Upload a single PDF — adds to the docs array (multi-PDF)
   const handleUpload = useCallback(async (file) => {
-    if (file.type !== 'application/pdf') { setUploadError('Please upload a PDF file.'); return; }
+    if (file.type !== 'application/pdf') {
+      setUploadError('Please upload a PDF file.');
+      return;
+    }
     setUploadError('');
     setUploading(true);
     try {
@@ -89,19 +98,40 @@ export default function App() {
       const r = await authFetch('/upload', { method: 'POST', body: fd });
       const d = await r.json();
       if (!r.ok || d.error) throw new Error(d.error || 'Upload failed');
-      setDoc({ namespace: d.namespace, fileName: d.fileName });
-      setMessages([]);
-      setChatId(null);
-      addMsg('ai', `"${d.fileName}" is ready! Ask me anything about it.`);
+
+      const newDoc = { namespace: d.namespace, fileName: d.fileName };
+
+      // Add to existing docs — don't replace, append
+      setDocs(prev => {
+        const already = prev.find(p => p.fileName === d.fileName);
+        if (already) return prev; // skip duplicate filename
+        return [...prev, newDoc];
+      });
+
+      setChatId(null); // new session when adding a PDF
+      addMsg('ai', `"${d.fileName}" uploaded! You now have ${docs.length + 1} PDF(s) loaded. Ask anything across all of them.`);
     } catch (err) {
       setUploadError(err.message);
     } finally {
       setUploading(false);
     }
-  }, [authFetch]);
+  }, [authFetch, docs.length]);
 
+  // Remove a single PDF from the active set
+  const handleRemoveDoc = useCallback((namespace) => {
+    setDocs(prev => prev.filter(d => d.namespace !== namespace));
+  }, []);
+
+  // Clear all PDFs
+  const handleClearDocs = useCallback(() => {
+    setDocs([]);
+    setChatId(null);
+    setMessages([]);
+  }, []);
+
+  // Send message — passes all namespaces to the backend
   const handleSend = useCallback(async (question) => {
-    if (!question.trim() || busy || !doc) return;
+    if (!question.trim() || busy || docs.length === 0) return;
     setBusy(true);
     addMsg('user', question);
     const aiMsgId = Date.now();
@@ -112,7 +142,15 @@ export default function App() {
       const response = await fetch(`${BASE_URL}/ask`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ question, namespace: doc.namespace, fileName: doc.fileName, chatId }),
+        body: JSON.stringify({
+          question,
+          // Send all active namespaces for multi-PDF search
+          namespaces: docs,
+          // Keep single namespace for backwards compat
+          namespace:  docs[0]?.namespace,
+          fileName:   docs[0]?.fileName,
+          chatId,
+        }),
       });
 
       if (!response.ok) {
@@ -160,7 +198,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [busy, doc, chatId, getToken, loadChatList, BASE_URL]);
+  }, [busy, docs, chatId, getToken, loadChatList, BASE_URL]);
 
   const handleClear = () => { setMessages([]); setChatId(null); };
 
@@ -168,11 +206,12 @@ export default function App() {
     <div className="flex h-screen bg-bg-primary overflow-hidden">
       <Sidebar
         open={sidebarOpen}
-        doc={doc}
+        docs={docs}
         uploading={uploading}
         uploadError={uploadError}
         onUpload={handleUpload}
-        onChangeDoc={() => { setDoc(null); setChatId(null); setMessages([]); }}
+        onRemoveDoc={handleRemoveDoc}
+        onClearDocs={handleClearDocs}
         chatList={chatList}
         loadingChats={loadingChats}
         activeChatId={chatId}
@@ -183,12 +222,12 @@ export default function App() {
       />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <ChatHeader
-          doc={doc}
+          docs={docs}
           onClear={handleClear}
           onToggleSidebar={() => setSidebarOpen(o => !o)}
         />
         <Messages messages={messages} />
-        <InputBar onSend={handleSend} disabled={!doc || busy} busy={busy} />
+        <InputBar onSend={handleSend} disabled={docs.length === 0 || busy} busy={busy} />
       </div>
     </div>
   );
