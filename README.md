@@ -76,7 +76,7 @@ npm run dev
 
 ### 🌐 Open App
 
-👉 http://localhost:5173
+👉 lumen-ai-one.vercel.app
 
 ---
 
