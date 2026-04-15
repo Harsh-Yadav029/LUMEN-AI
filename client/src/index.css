@@ -7,9 +7,9 @@
 
   html, body, #root {
     height: 100%;
-    background-color: #0B0F14;
-    color: #E5E7EB;
-    font-family: 'Poppins', system-ui, sans-serif;
+    background-color: #faf9f8;
+    color: #2f3333;
+    font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
