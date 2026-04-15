@@ -14,6 +14,7 @@ import { UPLOADS, PORT, __dirname } from './config/index.js';
 import uploadRouter from './routes/upload.js';
 import askRouter    from './routes/ask.js';
 import chatsRouter  from './routes/chats.js';
+import avatarRouter from './routes/avatar.js';
 
 // ── Bootstrap ──
 connectDB();
@@ -40,6 +41,7 @@ app.get('/health', (_, res) => res.json({ status: 'ok' }));
 app.use('/upload', uploadRouter);
 app.use('/ask',    askRouter);
 app.use('/chats',  chatsRouter);
+app.use('/upload-avatar', avatarRouter);
 
 // ── Global error handler ──
 app.use((err, req, res, _next) => {
